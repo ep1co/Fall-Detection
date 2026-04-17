@@ -32,7 +32,7 @@ ALERT_COOLDOWN_SEC = 60
 BUZZER_GPIO = 23
 SIM_PORT = "/dev/serial0"    # hoặc "/dev/ttyUSB2"
 SIM_BAUD = 115200
-CALL_NUMBERS = ["+84xxxxxxxxx"]  # sửa số của bạn
+CALL_NUMBERS = ["+84942826528"]  # sửa số của bạn
 RING_SEC = 20
 
 mp_pose = mp.solutions.pose
