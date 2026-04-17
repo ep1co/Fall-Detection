@@ -1,4 +1,3 @@
-# utils/pose_features.py
 import numpy as np
 
 # Feature names (để log/debug hoặc export)
