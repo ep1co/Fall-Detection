@@ -1,24 +1,29 @@
-import RPi.GPIO as GPIO
+# alerts/buzzer.py
 import time
 
-BUZZER_PIN = 17
+try:
+    from gpiozero import Buzzer
+except ImportError:
+    Buzzer = None
 
-GPIO.setmode(GPIO.BCM)
-GPIO.setup(BUZZER_PIN, GPIO.OUT)
+class BuzzerAlert:
+    def __init__(self, pin=23, pattern=(0.2, 0.2, 0.2, 0.8)):
+        """
+        pattern: durations in seconds; even index = ON, odd index = OFF
+        """
+        self.pin = int(pin)
+        self.pattern = pattern
+        self._buzzer = Buzzer(self.pin) if Buzzer else None
 
-def alert_buzzer(duration=3):
-    """Kêu liên tục trong duration giây"""
-    GPIO.output(BUZZER_PIN, GPIO.HIGH)
-    time.sleep(duration)
-    GPIO.output(BUZZER_PIN, GPIO.LOW)
+    def send(self, event: dict):
+        if not self._buzzer:
+            print("[BUZZER] gpiozero not available (not on Pi?). Skipping buzzer.")
+            return
 
-def alert_beep(times=3):
-    """Kêu ngắt quãng"""
-    for _ in range(times):
-        GPIO.output(BUZZER_PIN, GPIO.HIGH)
-        time.sleep(0.3)
-        GPIO.output(BUZZER_PIN, GPIO.LOW)
-        time.sleep(0.2)
-
-# Cleanup khi thoát
-GPIO.cleanup()
+        for i, d in enumerate(self.pattern):
+            if i % 2 == 0:
+                self._buzzer.on()
+            else:
+                self._buzzer.off()
+            time.sleep(d)
+        self._buzzer.off()
