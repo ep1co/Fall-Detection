@@ -1,29 +1,69 @@
 # alerts/buzzer.py
 import time
+import threading
 
 try:
-    from gpiozero import Buzzer
+    import RPi.GPIO as GPIO
 except ImportError:
-    Buzzer = None
+    GPIO = None
 
-class BuzzerAlert:
-    def __init__(self, pin=23, pattern=(0.2, 0.2, 0.2, 0.8)):
-        """
-        pattern: durations in seconds; even index = ON, odd index = OFF
-        """
+
+class ContinuousBuzzer:
+    """
+    Active buzzer: GPIO HIGH = kêu.
+    Beep pattern: ON 0.15s, OFF 0.15s, lặp liên tục cho tới khi stop().
+    """
+
+    def __init__(self, pin=23, on_sec=0.15, off_sec=0.15):
         self.pin = int(pin)
-        self.pattern = pattern
-        self._buzzer = Buzzer(self.pin) if Buzzer else None
+        self.on_sec = float(on_sec)
+        self.off_sec = float(off_sec)
 
-    def send(self, event: dict):
-        if not self._buzzer:
-            print("[BUZZER] gpiozero not available (not on Pi?). Skipping buzzer.")
+        self._stop_evt = threading.Event()
+        self._thread = None
+        self._running = False
+
+        if GPIO:
+            GPIO.setwarnings(False)
+            GPIO.setmode(GPIO.BCM)
+            GPIO.setup(self.pin, GPIO.OUT, initial=GPIO.LOW)
+
+    def start(self):
+        """Start beeping in background (non-blocking)."""
+        if self._running:
+            return
+        self._stop_evt.clear()
+        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._thread.start()
+        self._running = True
+
+    def stop(self):
+        """Stop beeping and set GPIO LOW."""
+        if not self._running:
+            return
+        self._stop_evt.set()
+        if self._thread:
+            self._thread.join(timeout=1.0)
+        self._running = False
+        if GPIO:
+            GPIO.output(self.pin, GPIO.LOW)
+
+    def _run(self):
+        if not GPIO:
+            # Cho phép test trên PC: chỉ log
+            while not self._stop_evt.is_set():
+                print("[BUZZER] beep")
+                time.sleep(self.on_sec + self.off_sec)
             return
 
-        for i, d in enumerate(self.pattern):
-            if i % 2 == 0:
-                self._buzzer.on()
-            else:
-                self._buzzer.off()
-            time.sleep(d)
-        self._buzzer.off()
+        while not self._stop_evt.is_set():
+            GPIO.output(self.pin, GPIO.HIGH)
+            time.sleep(self.on_sec)
+            GPIO.output(self.pin, GPIO.LOW)
+            time.sleep(self.off_sec)
+
+    def cleanup(self):
+        """Call when program exits (optional)."""
+        self.stop()
+        if GPIO:
+            GPIO.cleanup(self.pin)
