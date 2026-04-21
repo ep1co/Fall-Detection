@@ -72,6 +72,7 @@ def train_model(X, y):
         random_state=42,
         n_jobs=-1,
         class_weight='balanced' # 4/3: them thu
+        min_sample_leaf=5 # 17/4: them thu, giam overfitting, tang do cham cua model
     )
 
     print("[INFO] Training RandomForest model...")
