@@ -11,6 +11,15 @@ import joblib
 from utils.pose_features import extract_features
 from alerts.buzzer import ContinuousBuzzer
 from alerts.sim_a7680c import SimA7680CAlarm
+from utils.cloud_uploader import post_fall_event
+
+CLOUD_FUNCTION_URL = "https://<your-cloud-function-url>/createFallEvent"
+DEVICE_ID = "pi_cam_001"
+DEVICE_KEY = "<your_device_key_secret>"
+
+SNAP_W, SNAP_H = 640, 480
+JPEG_QUALITY = 70
+
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 MODEL_PATH = ROOT_DIR / "models" / "fall_detector_rf_test1.pkl"
@@ -49,6 +58,47 @@ class State:
     FALL_SUSPECT = "FALL_SUSPECT"
     ALARMING = "ALARMING"
     RECOVERING = "RECOVERING"
+
+def make_jpeg_bytes(frame_bgr, w=640, h=480, quality=70):
+    # resize để giảm dung lượng
+    small = cv2.resize(frame_bgr, (w, h), interpolation=cv2.INTER_AREA)
+    ok, buf = cv2.imencode(".jpg", small, [int(cv2.IMWRITE_JPEG_QUALITY), int(quality)])
+    if not ok:
+        return None
+    return buf.tobytes()
+
+event_sent = False
+if state == State.FALL_SUSPECT:
+    if fall_candidate and (now - state_ts >= CONFIRM_FALL_SEC):
+        state = State.ALARMING
+        state_ts = now
+        event_sent = False  # reset cho event mới
+        start_alarms()
+
+if state == State.ALARMING:
+    if not event_sent:
+        jpg = make_jpeg_bytes(frame, w=SNAP_W, h=SNAP_H, quality=JPEG_QUALITY)
+        if jpg is not None:
+            try:
+                resp = post_fall_event(
+                    url=CLOUD_FUNCTION_URL,
+                    device_id=DEVICE_ID,
+                    device_key=DEVICE_KEY,
+                    image_bytes=jpg,
+                    fall_prob=fall_prob_display,  # biến bạn đang có
+                    ts_ms=int(now * 1000),
+                )
+                print("[CLOUD] Event sent:", resp)
+                event_sent = True
+            except Exception as e:
+                # không block realtime: chỉ log, lần sau vẫn thử lại
+                print("[CLOUD][WARN] send failed:", e)
+
+if state == State.RECOVERING and upright_candidate and (now - state_ts >= RECOVER_SEC):
+    stop_alarms()
+    state = State.NORMAL
+    state_ts = now
+    event_sent = False
 
 def main():
     model = joblib.load(MODEL_PATH)
