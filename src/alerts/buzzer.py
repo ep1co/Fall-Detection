@@ -1,4 +1,3 @@
-# alerts/buzzer.py
 import time
 import threading
 
@@ -10,8 +9,8 @@ except ImportError:
 
 class ContinuousBuzzer:
     """
-    Active buzzer: GPIO HIGH = kêu.
-    Beep pattern: ON 0.15s, OFF 0.15s, lặp liên tục cho tới khi stop().
+    Active buzzer: GPIO HIGH = beep.
+    Beep pattern: ON 0.15s, OFF 0.15s, until stop().
     """
 
     def __init__(self, pin=23, on_sec=0.15, off_sec=0.15):
@@ -50,7 +49,7 @@ class ContinuousBuzzer:
 
     def _run(self):
         if not GPIO:
-            # Cho phép test trên PC: chỉ log
+            # Test on log
             while not self._stop_evt.is_set():
                 print("[BUZZER] beep")
                 time.sleep(self.on_sec + self.off_sec)
@@ -63,7 +62,7 @@ class ContinuousBuzzer:
             time.sleep(self.off_sec)
 
     def cleanup(self):
-        """Call when program exits (optional)."""
+        """Call when program exits."""
         self.stop()
         if GPIO:
             GPIO.cleanup(self.pin)
