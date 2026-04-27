@@ -1,4 +1,3 @@
-# scripts/run_realtime.py (phần chính)
 from pathlib import Path
 from collections import deque
 import time
@@ -21,7 +20,7 @@ FALL_LABEL = 1
 mp_pose = mp.solutions.pose
 mp_draw = mp.solutions.drawing_utils
 
-# --- smoothing window cho RF ---
+# --- smoothing window for RF ---
 PREDICTION_WINDOW = 10
 FALL_RATIO_THRESHOLD = 0.6
 PROBA_FRAME_THRESHOLD = 0.5
@@ -150,11 +149,11 @@ def main():
                         dynamic_ok = (hip_v > HIP_V_THR and (hip_a > HIP_A_THR or abs(ang_v) > ANG_V_THR))
                         posture_ok = (torso_angle > TORSO_ANGLE_THR or (bbox_aspect is not None and bbox_aspect > ASPECT_THR))
 
-                        # Kết hợp: RF phải "nghi ngờ", rồi dynamics + posture xác nhận
+                        # Combine: RF need to "suspect", then dynamics + posture confirmed
                         fall_candidate = (fall_prob > 0.5 and posture_ok and dynamic_ok) or (fall_ratio >= FALL_RATIO_THRESHOLD and posture_ok)
 
-                        # Upright candidate (đứng dậy / không còn nằm ngang)
-                        # torso nhỏ + bbox cao hơn rộng
+                        # Upright candidate (stand/sit up) 
+                        # gating logic: small torso angle + bbox taller than wider
                         upright_candidate = (torso_angle < 25.0) and (bbox_aspect is not None and bbox_aspect < 0.8)
 
                         prev_hip_v = hip_v
@@ -179,7 +178,8 @@ def main():
                     state_ts = now
 
             elif state == State.ALARMING:
-                # nếu có dấu hiệu đứng dậy thì chuyển RECOVERING
+                # turn to RECOVERING when seeing upright candidate, but don't go back to 
+                # NORMAL until confirmed RECOVERING for a while (to avoid flip-flop if noisy)
                 if upright_candidate:
                     state = State.RECOVERING
                     state_ts = now
@@ -191,7 +191,7 @@ def main():
                         state = State.NORMAL
                         state_ts = now
                 else:
-                    # lại ngã => quay lại alarming ngay
+                    # fall again => back to alarming right away (no need to go through suspect again)
                     state = State.ALARMING
                     state_ts = now
 

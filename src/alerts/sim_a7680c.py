@@ -1,4 +1,3 @@
-# alerts/sim_a7680c.py
 import time
 import threading
 
@@ -10,8 +9,8 @@ except ImportError:
 
 class SimA7680CAlarm:
     """
-    Gọi điện lặp (dial -> ring -> hangup -> nghỉ -> dial...) cho tới khi stop().
-    stop() sẽ gửi AT+CHUP để dừng ngay nếu đang gọi.
+    Loop action (dial -> ring -> hangup -> nghỉ -> dial...) until stop().
+    stop() will send AT+CHUP to stop right away, even if the call is in progress.
     """
 
     def __init__(
