@@ -75,7 +75,7 @@ class SimA7680CAlarm:
                 self._at(ser, "AT+CMEE=2")
                 self._at(ser, "AT")
 
-                # vòng lặp gọi
+                # call loop
                 idx = 0
                 while not self._stop_evt.is_set():
                     num = self.numbers[idx % len(self.numbers)]
