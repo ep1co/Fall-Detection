@@ -41,7 +41,7 @@ BUZZER_PIN = 23
 SIM_PORT = "/dev/serial0"
 SIM_BAUD = 115200
 CALL_NUMBERS = ["+84942826528"]
-RING_SEC = 20
+RING_SEC = 15
 
 class State:
     NORMAL = "NORMAL"
@@ -71,10 +71,19 @@ def main():
 
     # alarms
     buzzer = ContinuousBuzzer(pin=BUZZER_PIN, on_sec=0.15, off_sec=0.15)
-    sim_alarm = SimA7680CAlarm(port=SIM_PORT, baud=SIM_BAUD, numbers=CALL_NUMBERS, ring_sec=RING_SEC)
+    sim_alarm = SimA7680CAlarm(
+        port=SIM_PORT,
+        baud=SIM_BAUD,
+        numbers=CALL_NUMBERS,
+        ring_sec=RING_SEC,
+        retry_pause_sec=5,
+        send_sms_after_first_call=False,
+        sms_text="Canh bao: Phat hien te nga!",
+    )
 
     def start_alarms():
         buzzer.start()
+        sim_alarm.send_sms_to_all_once()
         sim_alarm.start()
 
     def stop_alarms():
