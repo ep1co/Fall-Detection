@@ -40,7 +40,7 @@ import mediapipe as mp
 import numpy as np
 import joblib
 
-from utils.pose_features_v2 import (
+from utils.pose_features_v3 import (
     extract_features,
     BASE_FEATURE_COUNT,
     FEATURE_NAMES,
@@ -63,10 +63,10 @@ from utils.mqtt_handler import (
 
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
-MODEL_PATH = ROOT_DIR / "models" / "fall_detector_rf_kfold_v2.pkl"
+MODEL_PATH = ROOT_DIR / "models" / "fall_detector_rf_window_kfold_v4.pkl"
 
 WINDOW_NAME = "AI Fall Detection - Realtime"
-DISPLAY_W, DISPLAY_H = 800, 600
+DISPLAY_W, DISPLAY_H = 640, 480
 FALL_LABEL = 1
 
 mp_pose = mp.solutions.pose
@@ -78,6 +78,12 @@ mp_draw = mp.solutions.drawing_utils
 # ============================================================
 PREDICTION_WINDOW = 10
 MOTION_WINDOW = 30
+
+# ============================================================
+# Window-level inference settings
+# ============================================================
+WINDOW_SEC = 2.0
+WINDOW_MIN_FRAMES = 3
 
 # Pose lost handling
 POSE_LOST_GRACE_SEC = 1.0
@@ -231,11 +237,11 @@ def upload_fall_event_async(
     thread.start()
 
 
-def get_fall_probability(model, X, has_proba: bool):
+def get_fall_probability(model, X):
     """
     Return probability of fall class.
     """
-    if has_proba:
+    if hasattr(model, "predict_proba"):
         proba = model.predict_proba(X)[0]
 
         if hasattr(model, "classes_"):
@@ -251,23 +257,122 @@ def get_fall_probability(model, X, has_proba: bool):
     pred = int(model.predict(X)[0])
     return 1.0 if pred == FALL_LABEL else 0.0
 
+META_COLUMNS = {
+    "label",
+    "video_label",
+    "fold",
+    "activity_type",
+    "video_name",
+    "window_start_sec",
+    "window_end_sec",
+}
+
+
+def summarize_realtime_window(frame_feature_rows):
+    """
+    Convert recent frame-level features into one window-level feature vector.
+
+    This must match summarize_window() in preprocess_v2.py:
+    mean, std, min, max, range, first, last, delta for every frame feature.
+    """
+    arr = np.array(
+        [[float(r[name]) for name in FEATURE_NAMES] for r in frame_feature_rows],
+        dtype=np.float32,
+    )
+
+    stats = {}
+
+    for i, name in enumerate(FEATURE_NAMES):
+        values = arr[:, i]
+
+        v_mean = float(np.mean(values))
+        v_std = float(np.std(values))
+        v_min = float(np.min(values))
+        v_max = float(np.max(values))
+        v_range = float(v_max - v_min)
+        v_first = float(values[0])
+        v_last = float(values[-1])
+        v_delta = float(v_last - v_first)
+
+        stats[f"{name}_mean"] = v_mean
+        stats[f"{name}_std"] = v_std
+        stats[f"{name}_min"] = v_min
+        stats[f"{name}_max"] = v_max
+        stats[f"{name}_range"] = v_range
+        stats[f"{name}_first"] = v_first
+        stats[f"{name}_last"] = v_last
+        stats[f"{name}_delta"] = v_delta
+
+    stats["window_num_frames"] = int(len(frame_feature_rows))
+    stats["window_duration_sec"] = float(
+        frame_feature_rows[-1]["timestamp_sec"] - frame_feature_rows[0]["timestamp_sec"]
+    )
+
+    return stats
+
+
+def make_model_input_from_window(frame_feature_rows, model_feature_names):
+    """
+    Build X with the exact feature order saved during training.
+    """
+    stats = summarize_realtime_window(frame_feature_rows)
+
+    missing = [name for name in model_feature_names if name not in stats]
+    if missing:
+        raise RuntimeError(
+            f"Missing realtime window features: {missing[:10]} "
+            f"total_missing={len(missing)}"
+        )
+
+    X = np.array(
+        [float(stats[name]) for name in model_feature_names],
+        dtype=np.float32,
+    ).reshape(1, -1)
+
+    return X
+
+
+def prune_old_realtime_rows(rows, now, window_sec):
+    """
+    Keep only rows inside the recent realtime window.
+    """
+    while rows and (now - rows[0]["timestamp_sec"]) > window_sec:
+        rows.popleft()
 
 def main():
-    model = joblib.load(MODEL_PATH)
-    has_proba = hasattr(model, "predict_proba")
+    artifact = joblib.load(MODEL_PATH)
+
+    if isinstance(artifact, dict):
+        model = artifact["model"]
+        model_feature_names = artifact["feature_names"]
+        model_threshold = float(artifact.get("threshold", 0.50))
+    else:
+        # Fallback for old saved model format.
+        model = artifact
+        model_feature_names = None
+        model_threshold = 0.50
 
     expected_features = getattr(model, "n_features_in_", None)
 
-    print(f"[APP] Loaded model: {MODEL_PATH}")
-    print(f"[APP] Model expected features: {expected_features}")
-    print(f"[APP] Current FEATURE_NAMES ({len(FEATURE_NAMES)}): {FEATURE_NAMES}")
+    print(f"[APP] Loaded model artifact: {MODEL_PATH}")
+    print(f"[APP] Model expected window features: {expected_features}")
+    print(f"[APP] Model threshold: {model_threshold}")
+    print(f"[APP] Frame FEATURE_NAMES ({len(FEATURE_NAMES)}): {FEATURE_NAMES}")
 
-    if expected_features is not None and expected_features != len(FEATURE_NAMES):
+    if model_feature_names is None:
         raise RuntimeError(
-            f"Feature mismatch: model expects {expected_features}, "
-            f"but pose_features.py provides {len(FEATURE_NAMES)}."
+            "The loaded model does not contain feature_names. "
+            "Please train with train_model.py v3 and save artifact = "
+            "{'model': clf, 'feature_names': feature_names, 'threshold': threshold}."
         )
 
+    print(f"[APP] Window feature count from artifact: {len(model_feature_names)}")
+
+    if expected_features is not None and expected_features != len(model_feature_names):
+        raise RuntimeError(
+            f"Feature mismatch: model expects {expected_features}, "
+            f"but artifact has {len(model_feature_names)} feature names."
+        )
     cap = cv2.VideoCapture(0)
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, DISPLAY_W)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, DISPLAY_H)
@@ -281,6 +386,7 @@ def main():
 
     recent_probs = deque(maxlen=PREDICTION_WINDOW)
     recent_features = deque(maxlen=MOTION_WINDOW)
+    recent_frame_rows = deque()
 
     # For temporal features
     prev_base_features = None
@@ -408,15 +514,36 @@ def main():
                         prev_base_features = feats[:BASE_FEATURE_COUNT]
                         prev_feature_time = now
 
-                        X = np.array(feats, dtype=np.float32).reshape(1, -1)
+                        # Store current frame features for window-level inference.
+                        frame_feature_row = {
+                            name: float(value)
+                            for name, value in zip(FEATURE_NAMES, feats)
+                        }
+                        frame_feature_row["timestamp_sec"] = float(now)
 
-                        if expected_features is not None and X.shape[1] != expected_features:
-                            raise RuntimeError(
-                                f"Realtime feature mismatch: X has {X.shape[1]} features, "
-                                f"model expects {expected_features}."
+                        recent_frame_rows.append(frame_feature_row)
+                        prune_old_realtime_rows(
+                            rows=recent_frame_rows,
+                            now=now,
+                            window_sec=WINDOW_SEC,
+                        )
+
+                        # Only predict when we have enough samples in the realtime window.
+                        if len(recent_frame_rows) >= WINDOW_MIN_FRAMES:
+                            X = make_model_input_from_window(
+                                frame_feature_rows=list(recent_frame_rows),
+                                model_feature_names=model_feature_names,
                             )
 
-                        fall_prob = get_fall_probability(model, X, has_proba)
+                            if expected_features is not None and X.shape[1] != expected_features:
+                                raise RuntimeError(
+                                    f"Realtime window feature mismatch: X has {X.shape[1]} features, "
+                                    f"model expects {expected_features}."
+                                )
+
+                            fall_prob = get_fall_probability(model, X)
+                        else:
+                            fall_prob = 0.0
 
                         recent_probs.append(fall_prob)
                         recent_features.append(feats)
@@ -424,7 +551,7 @@ def main():
                         probs_arr = np.array(recent_probs, dtype=np.float32)
 
                         fall_ratio_fast = float(
-                            np.mean(probs_arr >= PROBA_FRAME_THRESHOLD)
+                            np.mean(probs_arr >= max(PROBA_FRAME_THRESHOLD, model_threshold))
                         )
 
                         fall_ratio_slow = float(
@@ -436,13 +563,15 @@ def main():
                         # --------------------
                         # Current features
                         # --------------------
-                        torso_angle = float(feats[0])
-                        bbox_aspect = float(feats[5])
+                        f = dict(zip(FEATURE_NAMES, feats))
 
-                        hip_v = float(feats[6])
-                        shoulder_v = float(feats[7])
-                        angle_v = float(feats[8])
-                        bbox_h_v = float(feats[9])
+                        torso_angle = float(f["torso_angle_deg"])
+                        bbox_aspect = float(f["bbox_aspect"])
+
+                        hip_v = float(f["hip_v_norm"])
+                        shoulder_v = float(f["shoulder_v_norm"])
+                        angle_v = float(f["torso_angle_v_deg"])
+                        bbox_h_v = float(f["bbox_h_v_norm"])
 
                         # --------------------
                         # Posture states
@@ -612,6 +741,7 @@ def main():
 
                             recent_probs.clear()
                             recent_features.clear()
+                            recent_frame_rows.clear()
                             pose_lost_after_upright = False
                             pose_lost_start_time = None
                     else:
