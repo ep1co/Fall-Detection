@@ -1,3 +1,7 @@
+<<<<<<< HEAD
+=======
+# alerts/manager.py
+>>>>>>> origin/modify
 import time
 import threading
 
@@ -9,7 +13,11 @@ class AlertManager:
         self._lock = threading.Lock()
 
     def trigger(self, event: dict):
+<<<<<<< HEAD
         """Alerts in background, with cooldown."""
+=======
+        """Fire alerts in background, with cooldown."""
+>>>>>>> origin/modify
         now = time.time()
         with self._lock:
             if now - self._last_trigger_ts < self.cooldown_sec:

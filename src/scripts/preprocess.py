@@ -1,3 +1,7 @@
+<<<<<<< HEAD
+=======
+# scripts/preprocess.py
+>>>>>>> origin/modify
 import csv
 from pathlib import Path
 
@@ -34,7 +38,11 @@ def process_video(video_path: Path, label: int, rows: list):
 
     with mp_pose.Pose(
         static_image_mode=False,
+<<<<<<< HEAD
         model_complexity=1,  # similar to realtime.py 
+=======
+        model_complexity=1,  # giữ giống realtime (đừng để chỗ 0 chỗ 1)
+>>>>>>> origin/modify
         enable_segmentation=False,
         min_detection_confidence=0.5,
         min_tracking_confidence=0.5,

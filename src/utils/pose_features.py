@@ -1,5 +1,9 @@
 import numpy as np
 
+<<<<<<< HEAD
+=======
+# Feature names (để log/debug hoặc export)
+>>>>>>> origin/modify
 FEATURE_NAMES = [
     "torso_angle_deg",
     "hip_y_norm",
