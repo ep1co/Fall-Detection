@@ -40,7 +40,7 @@ import mediapipe as mp
 import numpy as np
 import joblib
 
-from utils.pose_features_v3 import (
+from utils.pose_features import (
     extract_features,
     BASE_FEATURE_COUNT,
     FEATURE_NAMES,
