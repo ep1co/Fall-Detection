@@ -1,7 +1,3 @@
-<<<<<<< HEAD
-=======
-# alerts/buzzer.py
->>>>>>> origin/modify
 import time
 import threading
 
@@ -13,14 +9,9 @@ except ImportError:
 
 class ContinuousBuzzer:
     """
-<<<<<<< HEAD
-    Active buzzer: GPIO HIGH = beep.
-    Beep pattern: ON 0.15s, OFF 0.15s, until stop().
-=======
     Active buzzer: GPIO HIGH = kêu.
     Beep pattern: ON 0.15s, OFF 0.15s, lặp liên tục cho tới khi stop().
     Supports mute with cooldown.
->>>>>>> origin/modify
     """
 
     def __init__(self, pin=23, on_sec=0.15, off_sec=0.15):
@@ -29,15 +20,10 @@ class ContinuousBuzzer:
         self.off_sec = float(off_sec)
 
         self._stop_evt = threading.Event()
-<<<<<<< HEAD
-        self._thread = None
-        self._running = False
-=======
         self._mute_until = None  # Timestamp when mute ends
         self._thread = None
         self._running = False
         self._mute_lock = threading.Lock()
->>>>>>> origin/modify
 
         if GPIO:
             GPIO.setwarnings(False)
@@ -64,13 +50,6 @@ class ContinuousBuzzer:
         if GPIO:
             GPIO.output(self.pin, GPIO.LOW)
 
-<<<<<<< HEAD
-    def _run(self):
-        if not GPIO:
-            # Test on log
-            while not self._stop_evt.is_set():
-                print("[BUZZER] beep")
-=======
     def mute(self, seconds: float):
         """
         Mute buzzer for specified duration.
@@ -99,20 +78,10 @@ class ContinuousBuzzer:
             while not self._stop_evt.is_set():
                 if not self._is_muted():
                     print("[BUZZER] beep")
->>>>>>> origin/modify
                 time.sleep(self.on_sec + self.off_sec)
             return
 
         while not self._stop_evt.is_set():
-<<<<<<< HEAD
-            GPIO.output(self.pin, GPIO.HIGH)
-            time.sleep(self.on_sec)
-            GPIO.output(self.pin, GPIO.LOW)
-            time.sleep(self.off_sec)
-
-    def cleanup(self):
-        """Call when program exits."""
-=======
             if not self._is_muted():
                 GPIO.output(self.pin, GPIO.HIGH)
                 time.sleep(self.on_sec)
@@ -123,7 +92,6 @@ class ContinuousBuzzer:
 
     def cleanup(self):
         """Call when program exits (optional)."""
->>>>>>> origin/modify
         self.stop()
         if GPIO:
             GPIO.cleanup(self.pin)
